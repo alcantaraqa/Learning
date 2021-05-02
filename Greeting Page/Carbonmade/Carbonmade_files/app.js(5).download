@@ -1,0 +1,238 @@
+"use strict";
+var SiteBlocks = {
+    nav: {
+        update: function (data) {
+            var url = '/?partial=nav';
+            var el = document.querySelector('nav');
+            fetch(url)
+                .then(function (response) { return response.text(); })
+                .then(function (html) {
+                el.innerHTML = Carbon.DOM.parse(html).innerHTML;
+            });
+        }
+    },
+    logo: {
+        update: function () {
+            SiteActions.loadPartial({
+                url: '/?partial=header',
+                selector: 'header'
+            });
+        }
+    },
+    brandingGlyph: {
+        update: function (value) {
+            var el = document.querySelector('carbon-glyph');
+            el.innerHTML = '&#x' + value + ';';
+        }
+    },
+    siteTitle: {
+        update: function (text) {
+            var el = document.querySelector('header h1');
+            el.textContent = text || '';
+            el.classList[text ? 'remove' : 'add']('hide');
+        }
+    },
+    tagline: {
+        update: function (text) {
+            var el = document.querySelector('.tagline');
+            if (!el)
+                return;
+            el.classList[text ? 'remove' : 'add']('hide');
+            el.textContent = text || '';
+        }
+    },
+    siteFooterContent: {
+        update: function (data) {
+            var el = document.getElementById('footerContent');
+            el.innerHTML = data;
+        }
+    }
+};
+var SiteActions = {
+    updateBlock: function (data) {
+        var block = SiteBlocks[data.name];
+        if (block) {
+            block.update(data.data);
+        }
+    },
+    loadPartial: function (data) {
+        var el = document.querySelector(data.selector);
+        fetch(data.url)
+            .then(function (response) { return response.text(); })
+            .then(function (html) { el.outerHTML = html; });
+    },
+    showNav: function () {
+        document.body.classList.remove('hideNav');
+        document.body.classList.add('showNav');
+    },
+    hideNav: function () {
+        document.body.classList.remove('showNav');
+        document.body.classList.add('hideNav');
+    }
+};
+var App = (function () {
+    function App() {
+        this.actions = SiteActions;
+        this.blocks = SiteBlocks;
+        this.router = new Carbon.Router({
+            '/': this.index.bind(this),
+            '/about': this.about.bind(this),
+            '/contact': this.contact.bind(this),
+            '/projects/{id}/{number}': this.project.bind(this),
+            '/projects/{id}': this.project.bind(this),
+            '/blog': this.blog.bind(this),
+            '/blog/{tag}': this.blog.bind(this)
+        });
+        this.router.start({ dispatch: true });
+    }
+    App.prototype.index = function (cxt) {
+        if (cxt.init) {
+            this.onLoaded(cxt);
+            return;
+        }
+        this.selectSiteLink('home');
+        this.load('/', true).then(function () {
+            ['showNav', 'project', 'postsPage', 'blogPage'].forEach(function (name) {
+                document.body.classList.remove(name);
+            });
+        });
+    };
+    App.prototype.project = function (cxt) {
+        if (cxt.init) {
+            this.onLoaded(cxt);
+            return;
+        }
+        for (var _i = 0, _a = _.queryAll('.siteLinks li'); _i < _a.length; _i++) {
+            var el = _a[_i];
+            el.classList.remove('current');
+        }
+        this.load(cxt.path, true).then(function () {
+            document.body.classList.add('project');
+            document.body.classList.remove('showNav');
+        });
+    };
+    App.prototype.blog = function (cxt) {
+        if (cxt.init) {
+            this.onLoaded(cxt);
+            return;
+        }
+        window.scrollTo(0, 0);
+        if (cxt.init) {
+            document.body.classList.add('blogPage');
+            this.onLoaded(cxt);
+            return;
+        }
+        for (var _i = 0, _a = _.queryAll('.siteLinks li'); _i < _a.length; _i++) {
+            var el = _a[_i];
+            el.classList.remove('current');
+        }
+        this.load(cxt.url, true).then(function () {
+            document.body.classList.add('blogPage');
+            document.body.classList.remove('showNav');
+        });
+    };
+    App.prototype.about = function (cxt) {
+        if (cxt.init) {
+            this.onLoaded(cxt);
+            return;
+        }
+        this.selectSiteLink('about');
+        this.load('/about', true).then(function () {
+            _.removeClass(document.body, 'showNav', 'project', 'postsPage', 'blogPage');
+        });
+    };
+    App.prototype.contact = function (cxt) {
+        if (cxt.init) {
+            this.onLoaded(cxt);
+            return;
+        }
+        this.selectSiteLink('contact');
+        this.load('/contact', true).then(function () {
+            _.removeClass(document.body, 'showNav', 'project', 'blogPage');
+        });
+    };
+    App.prototype.selectSiteLink = function (name) {
+        _.queryAll('.siteLinks li').forEach(function (el) { return el.classList.remove('current'); });
+        var el = document.getElementById(name + 'Link');
+        el && el.classList.add('current');
+    };
+    App.prototype.load = function (path, notify) {
+        var _this = this;
+        var url = path + (path.includes('?') ? '&' : '?') + 'partial=true';
+        var mainEl = document.querySelector('main');
+        return fetch(url)
+            .then(function (response) {
+            document.title = decodeURI(response.headers.get("x-page-title") || '');
+            return response.text();
+        })
+            .then(function (html) {
+            mainEl.innerHTML = html;
+            _this.onLoaded({
+                path: path,
+                init: false,
+                notify: notify
+            });
+            return Promise.resolve(true);
+        });
+    };
+    App.prototype.onLoaded = function (cxt) {
+        document.body.classList.remove('showNav');
+        if (cxt.notify !== false) {
+            window.scrollTo(0, 0);
+        }
+        Carbon.Reactive.trigger('routed', cxt);
+        _.queryAll('[on-insert]').forEach(function (el) {
+            Carbon.ActionKit.dispatch({ type: 'insert', target: el });
+            el.removeAttribute('on-insert');
+        });
+        if (!this.lazyLoader) {
+            this.lazyLoader = new Carbon.LazyLoader();
+        }
+        this.lazyLoader.setup();
+    };
+    return App;
+}());
+Carbon.controllers.set('form', {
+    setup: function (e) {
+        Carbon.Form.get(e.target);
+    }
+});
+var CaptionActions = {
+    toggle: function (e) {
+        var pieceEl = e.target.closest('carbon-piece');
+        pieceEl.classList.toggle('hovering');
+        var captionEl = pieceEl.querySelector('caption');
+        captionEl && _.one(captionEl, 'touchend', function () {
+            for (var _i = 0, _a = _.queryAll('carbon-piece'); _i < _a.length; _i++) {
+                var el = _a[_i];
+                el.classList.remove('hovering');
+            }
+        });
+    },
+    show: function (e) {
+        var pieceEl = e.target.closest('carbon-piece');
+        pieceEl.classList.add('hovering');
+        _.one(pieceEl, 'mouseleave', function (e) {
+            pieceEl.classList.remove('hovering');
+        });
+        var captionEl = pieceEl.querySelector('caption');
+        captionEl && _.one(captionEl, 'touchend', function () {
+            for (var _i = 0, _a = _.queryAll('carbon-piece'); _i < _a.length; _i++) {
+                var el = _a[_i];
+                el.classList.remove('hovering');
+            }
+        });
+    }
+};
+Carbon.controllers.set('caption', CaptionActions);
+_.queryAll('carbon-piece > carbon-indicator').forEach(function (el) {
+    el.setAttribute('on-touchstart', 'caption:toggle');
+});
+Carbon.controllers.set('nav', {
+    toggle: function (e) {
+        document.body.classList.toggle('showNav');
+        document.body.classList.toggle('hideNav');
+    }
+});
+Carbon.ActionKit.observe('click', 'mouseover', 'touchstart');
+var site = new App();

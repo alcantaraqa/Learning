@@ -1,0 +1,61 @@
+"use strict";
+var CM;
+(function (CM) {
+    class Notifier {
+        constructor() {
+            this.isOpen = false;
+        }
+        openSocket() {
+            this.socket = new WebSocket(`wss://hub.carbonmade.com/subscribe/${CM.userId}`);
+            this.socket.onerror = e => { console.log(e); };
+            this.socket.onopen = this.onSocketOpen.bind(this);
+            this.socket.onmessage = this.onMessage.bind(this);
+            this.socket.onclose = this.onSocketClose.bind(this);
+        }
+        onSocketOpen() {
+            console.log('socket opened');
+            this.isOpen = true;
+            this.intervalId = setInterval(() => {
+                if (!this.isOpen)
+                    return;
+                this.socket.send(JSON.stringify({ type: 'ping' }));
+            }, 60 * 1000);
+        }
+        onSocketClose() {
+            this.isOpen = false;
+            if (this.intervalId) {
+                clearInterval(this.intervalId);
+            }
+            setTimeout(this.openSocket.bind(this), 5000);
+        }
+        onMessage(e) {
+            console.log('message recieved:', e.data);
+            let data = JSON.parse(e.data);
+            if (data.type === 'encodingProgress') {
+                let pieceEl = document.querySelector(`#piece_${data.pieceId}`);
+                if (!pieceEl) {
+                    console.log(`#piece_${data.pieceId} not found`);
+                    return;
+                }
+                CM.Piece.get(pieceEl).setProgress(data);
+            }
+            else if (data.type === 'backupProgress') {
+                let blockEl = document.querySelector('#backupNotification');
+                blockEl.classList.remove('closed');
+                blockEl.classList.add('open');
+                let meterEl = blockEl.querySelector('.meter');
+                meterEl.style.width = (data.progress * 100) + 'px';
+                blockEl.querySelector('.description').textContent = data.message;
+            }
+            else if (data.cId && CM.messages.conversationId) {
+                if (data.cId == CM.messages.conversationId.toString()) {
+                    CM.messages.appendMessage(data.cId, data.mId);
+                }
+                else {
+                    CM.messages.reloadList();
+                }
+            }
+        }
+    }
+    new Notifier().openSocket();
+})(CM || (CM = {}));

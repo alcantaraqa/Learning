@@ -1,0 +1,23 @@
+
+// Polyfills ---
+// Chrome  : 54+
+// Firefox : 49+
+// Safari  : 14+
+
+if (!Element.prototype.replaceWith) {
+  Element.prototype.replaceWith = function(element) {
+    if (this.parentNode) {
+      this.parentNode.replaceChild(element, this);
+    }
+  };
+}
+
+if (!Array.prototype.remove) {
+  Array.prototype.remove = function(item) {
+    var index = this.indexOf(item);
+
+    if (index != -1) {
+      this.splice(index, 1);
+    }
+  };
+}

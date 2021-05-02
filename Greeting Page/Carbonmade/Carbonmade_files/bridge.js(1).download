@@ -1,0 +1,121 @@
+"use strict";
+var Bridge = (function () {
+    function Bridge() {
+        this.path = document.location.pathname;
+        window.addEventListener('message', this.receiveMessage.bind(this));
+    }
+    Bridge.prototype.receiveMessage = function (e) {
+        var message = JSON.parse(e.data);
+        if (message.type == 'notification') {
+            this.handleNotification(message.data);
+        }
+        else if (this[message.action]) {
+            this[message.action](message.data);
+        }
+        else if (SiteActions[message.action]) {
+            SiteActions[message.action](message.data);
+        }
+    };
+    Bridge.prototype.getUploadAuthorization = function () {
+        this.sendMessage({
+            type: 'authorize',
+            action: 'authorize',
+            model: 'upload'
+        });
+        return new Promise(function (resolve) {
+            window.addEventListener('message', function (e) {
+                resolve(JSON.parse(e.data).data);
+            }, { once: true });
+        });
+    };
+    Bridge.prototype.handleNotification = function (data) {
+        switch (data.name) {
+            case 'logo':
+                site.blocks.logo.update();
+                break;
+            case 'resume':
+            case 'photo':
+            case 'thumbnail':
+            case 'cover':
+                this.reload();
+                break;
+        }
+    };
+    Bridge.prototype.sendMessage = function (message) {
+        window.parent.postMessage(JSON.stringify(message), '*');
+    };
+    Bridge.prototype.editBlock = function (data) {
+        var message = {
+            type: 'editBlock',
+            data: data
+        };
+        this.sendMessage(message);
+    };
+    Bridge.prototype.optionSaved = function (data) {
+        switch (data.name) {
+            case 'featureFirstProject':
+                this.reload();
+                break;
+            case 'captionPlacement':
+                this.reload();
+                break;
+            case 'projectDescriptionPlacement':
+                this.reload();
+                break;
+            case 'projectSubtitleField':
+                this.reload();
+                break;
+            case 'logoBox':
+                site.blocks.logo.update();
+                break;
+        }
+    };
+    Bridge.prototype.applyOption = function (data) {
+        switch (data.name) {
+            case 'brandingGlyph':
+                site.blocks.brandingGlyph.update(data.value);
+                break;
+            default:
+                document.body.classList.remove(data.oldValue);
+                document.body.classList.add(data.value);
+                break;
+        }
+    };
+    Bridge.prototype.navigate = function (url) {
+        this.path = url;
+        site.router.navigate(url, { replace: true });
+    };
+    Bridge.prototype.load = function (url) {
+        this.navigate(url);
+    };
+    Bridge.prototype.reload = function () {
+        var scrollTop = document.body.scrollTop;
+        site.load(this.path, false).then(function () {
+            window.scrollTo(0, scrollTop);
+        });
+    };
+    return Bridge;
+}());
+document.body.addEventListener('click', function (e) {
+    var target = e.target;
+    var aEl = target.closest('a');
+    if (aEl) {
+        var href = aEl.getAttribute('href');
+        if (href && href.startsWith('http')) {
+            e.preventDefault();
+        }
+    }
+}, true);
+if (window.parent != self) {
+    var bridge_1 = new Bridge();
+    document.addEventListener('router:navigate', function (e) {
+        var data = e.detail;
+        bridge_1.path = data.path;
+        bridge_1.sendMessage({
+            type: 'navigate',
+            path: data.path,
+            init: false
+        });
+    });
+    window.bridge = bridge_1;
+}
